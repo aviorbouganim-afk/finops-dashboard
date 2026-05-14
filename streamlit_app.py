@@ -187,14 +187,6 @@ def filter_data(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
-def build_monthly_spend(df: pd.DataFrame) -> pd.DataFrame:
-    return (
-        df.groupby(["month", "vendor"], as_index=False)["spend"]
-        .sum()
-        .sort_values(["month", "vendor"])
-    )
-
-
 def forecast_month_end(df: pd.DataFrame) -> float:
     monthly_totals = df.groupby("month")["spend"].sum().sort_index()
     if monthly_totals.empty:
@@ -592,10 +584,8 @@ def render_main_charts(df: pd.DataFrame) -> None:
 
 
 def render_graph_focus(df: pd.DataFrame) -> None:
-    st.subheader("Graph focus mode")
-    open_focus = st.checkbox("Open one graph with explanation and custom controls")
-    if not open_focus:
-        return
+    st.subheader("Explore a graph")
+    st.caption("Choose one chart to inspect in detail with dedicated controls and context.")
 
     graph = st.selectbox(
         "Choose graph",
@@ -714,7 +704,7 @@ def render_recommendations() -> None:
         with st.container(border=True):
             col1, col2 = st.columns((4, 1))
             col1.markdown(f"**{item.title}**")
-            col1.caption(f"{item.owner} · {item.rationale}")
+            col1.caption(f"{item.owner} - {item.rationale}")
             col2.metric("Savings", money(item.savings))
 
 
