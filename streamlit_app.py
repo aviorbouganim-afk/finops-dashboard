@@ -685,56 +685,95 @@ def render_graph_focus(df: pd.DataFrame) -> None:
         st.altair_chart(savings_opportunities_chart(height=520), use_container_width=True)
 
 
-def render_risks(df: pd.DataFrame) -> None:
-    st.subheader("Usage risks requiring action")
-    risks = detect_anomalies(df)
+def governance_policies_data() -> list[dict[str, str]]:
+    return [
+        {
+            "domain": "LLM APIs",
+            "policy": "Require use-case tags and budget owner metadata",
+            "enforcement": "Reject untagged requests at gateway after grace period",
+            "trigger": "Missing metadata or unassigned spend owner",
+        },
+        {
+            "domain": "Seat-based AI tools",
+            "policy": "Review inactive seats after 21 days",
+            "enforcement": "Downgrade, reclaim, or require manager approval",
+            "trigger": "Utilization below target threshold",
+        },
+        {
+            "domain": "Model selection",
+            "policy": "Route low-risk workloads to cheaper default models",
+            "enforcement": "Policy-driven routing by task category",
+            "trigger": "Premium model used for repetitive workloads",
+        },
+        {
+            "domain": "Procurement",
+            "policy": "Benchmark vendor pricing before renewals",
+            "enforcement": "Use utilization and unit-cost data in negotiation",
+            "trigger": "High concentration or committed-volume renewal",
+        },
+    ]
 
+
+def render_risk_cards(risks: pd.DataFrame) -> None:
     if risks.empty:
         st.success("No current risks matched the anomaly rules.")
         return
 
-    display = risks.copy()
-    display["estimated_impact"] = display["estimated_impact"].map(money)
-    st.dataframe(display, use_container_width=True, hide_index=True)
+    impact_options = ["All"] + sorted(risks["impact"].unique())
+    selected_impact = st.radio("Risk severity", impact_options, horizontal=True)
+    visible = risks if selected_impact == "All" else risks[risks["impact"] == selected_impact]
 
-
-def render_recommendations() -> None:
-    st.subheader("Optimization backlog")
-    for item in RECOMMENDATIONS:
+    for _, risk in visible.iterrows():
         with st.container(border=True):
-            col1, col2 = st.columns((4, 1))
-            col1.markdown(f"**{item.title}**")
-            col1.caption(f"{item.owner} - {item.rationale}")
-            col2.metric("Savings", money(item.savings))
+            top, metric = st.columns((4, 1))
+            top.markdown(f"**{risk['risk']}**")
+            top.caption(f"Owner: {risk['owner']} | Vendor: {risk['vendor']} | Severity: {risk['impact']}")
+            metric.metric("Exposure", money(float(risk["estimated_impact"])))
+            st.markdown(f"**Suggested action:** {risk['policy_action']}")
 
 
-def render_governance() -> None:
-    st.subheader("Governance guardrails")
-    policies = pd.DataFrame(
-        [
-            {
-                "domain": "LLM APIs",
-                "policy": "Require use-case tags and budget owner metadata",
-                "enforcement": "Reject untagged requests at gateway after grace period",
-            },
-            {
-                "domain": "Seat-based AI tools",
-                "policy": "Review inactive seats after 21 days",
-                "enforcement": "Downgrade, reclaim, or require manager approval",
-            },
-            {
-                "domain": "Model selection",
-                "policy": "Route low-risk workloads to cheaper default models",
-                "enforcement": "Policy-driven routing by task category",
-            },
-            {
-                "domain": "Procurement",
-                "policy": "Benchmark vendor pricing before renewals",
-                "enforcement": "Use utilization and unit-cost data in negotiation",
-            },
-        ]
-    )
-    st.dataframe(policies, use_container_width=True, hide_index=True)
+def render_optimization_cards() -> None:
+    for item in sorted(RECOMMENDATIONS, key=lambda rec: rec.savings, reverse=True):
+        with st.container(border=True):
+            top, metric = st.columns((4, 1))
+            top.markdown(f"**{item.title}**")
+            top.caption(f"Owner: {item.owner}")
+            metric.metric("Monthly saving", money(item.savings))
+            st.markdown(f"**Why it matters:** {item.rationale}")
+
+
+def render_governance_cards() -> None:
+    for policy in governance_policies_data():
+        with st.container(border=True):
+            st.markdown(f"**{policy['domain']}**")
+            st.caption(f"Trigger: {policy['trigger']}")
+            st.markdown(f"**Policy:** {policy['policy']}")
+            st.markdown(f"**Enforcement:** {policy['enforcement']}")
+
+
+def render_action_center(df: pd.DataFrame) -> None:
+    st.subheader("Action Center")
+    st.caption("Prioritized cost actions, governance risks, and optimization opportunities.")
+
+    risks = detect_anomalies(df)
+    open_risks = len(risks)
+    high_priority = int((risks["impact"] == "High").sum()) if not risks.empty else 0
+    exposure = float(risks["estimated_impact"].sum()) if not risks.empty else 0
+    savings = sum(item.savings for item in RECOMMENDATIONS)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Open risks", f"{open_risks}")
+    c2.metric("High priority", f"{high_priority}")
+    c3.metric("Estimated exposure", money(exposure))
+    c4.metric("Savings pipeline", money(savings))
+
+    risk_tab, optimization_tab, governance_tab = st.tabs(["Risks", "Optimizations", "Governance"])
+    with risk_tab:
+        render_risk_cards(risks)
+    with optimization_tab:
+        render_optimization_cards()
+    with governance_tab:
+        render_governance_cards()
 
 
 def render_raw_data(df: pd.DataFrame) -> None:
@@ -779,15 +818,8 @@ def main() -> None:
     st.divider()
     render_graph_focus(filtered)
     st.divider()
-
-    risk_col, recommendation_col = st.columns((1.35, 1))
-    with risk_col:
-        render_risks(filtered)
-    with recommendation_col:
-        render_recommendations()
-
+    render_action_center(filtered)
     st.divider()
-    render_governance()
     render_raw_data(filtered)
 
 
